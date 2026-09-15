@@ -1,7 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.database import engine, Base, get_db
 from app.models import AuditLog
@@ -15,7 +15,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. Endpoint para procesar auditorías
 @app.post("/api/v1/audit-document", response_model=AuditResponse, status_code=status.HTTP_201_CREATED)
 async def audit_document(
     file: UploadFile = File(...),
@@ -57,11 +55,22 @@ async def audit_document(
         "resultado_auditoria": nuevo_log.resultado
     }
 
-# 2. Endpoint para obtener el historial completo
+# 1. Endpoint de consulta con paginación y filtrado por estado
 @app.get("/api/v1/audit-logs", response_model=List[AuditResponse])
-def get_audit_logs(db: Session = Depends(get_db)):
-    logs = db.query(AuditLog).order_by(AuditLog.id.desc()).all()
-    
+def get_audit_logs(
+    skip: int = Query(0, ge=0, description="Registros a omitir para paginación"),
+    limit: int = Query(10, ge=1, le=100, description="Límite de registros por página"),
+    estado: Optional[str] = Query(None, description="Filtrar por: Cumple, No Cumple, Cumplimiento Parcial"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(AuditLog)
+
+    # Filtrado dinámico dentro de la columna JSONB usando .astext de PostgreSQL
+    if estado:
+        query = query.filter(AuditLog.resultado["estado"].astext == estado)
+
+    logs = query.order_by(AuditLog.id.desc()).offset(skip).limit(limit).all()
+
     return [
         {
             "id": log.id,
@@ -72,7 +81,7 @@ def get_audit_logs(db: Session = Depends(get_db)):
         for log in logs
     ]
 
-# 3. Endpoint para obtener una auditoría por ID
+# 2. Endpoint para obtener una auditoría por ID
 @app.get("/api/v1/audit-logs/{audit_id}", response_model=AuditResponse)
 def get_audit_log_by_id(audit_id: int, db: Session = Depends(get_db)):
     log = db.query(AuditLog).filter(AuditLog.id == audit_id).first()
