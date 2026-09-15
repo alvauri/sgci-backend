@@ -1,0 +1,26 @@
+services:
+  # Servicio de Base de Datos
+  db:
+    # PostgreSQL 16 con la extensión pgvector (soporte para vectores / IA)
+    image: pgvector/pgvector:pg16
+    
+    # Nombre del contenedor en Docker
+    container_name: sgci_db
+    
+    # Mapeo de puertos: [PC local]:[Contenedor]
+    ports:
+      - "5432:5432"
+    
+    # Credenciales y nombre de la base de datos inicial
+    environment:
+      POSTGRES_USER: sgci_user
+      POSTGRES_PASSWORD: sgci_password
+      POSTGRES_DB: sgci_db
+    
+    # Montaje del volumen para no perder datos al detener el contenedor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+# Volumen persistente administrado por Docker
+volumes:
+  pgdata:

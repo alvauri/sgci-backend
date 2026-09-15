@@ -1,0 +1,26 @@
+# Web framework rápido para crear los endpoints de la API
+fastapi==0.111.0
+
+# Servidor ASGI para poner a correr FastAPI en local o producción
+uvicorn==0.30.1
+
+# Lectura y extracción de texto desde archivos PDF
+pypdf==4.2.0
+
+# Corta el texto del PDF en fragmentos (chunks) procesables
+langchain-text-splitters==0.2.2
+
+# Cliente oficial para generar embeddings y respuestas con la API de OpenAI
+openai==1.35.10
+
+# Driver básico para conectar Python con PostgreSQL
+psycopg2-binary==2.9.9
+
+# Adaptador para operar con tipos de datos vectoriales en Postgres
+pgvector==0.2.5
+
+# Carga contraseñas y claves desde tu archivo .env
+python-dotenv==1.0.1
+
+# Permite que la API reciba archivos subidos por el usuario (los PDFs)
+python-multipart==0.0.9
