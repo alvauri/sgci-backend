@@ -12,10 +12,21 @@ import {
 
 const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
+// Agrego clausulas
+const CLAUSULAS_ISO9001 = [
+  { id: '7.2', nombre: 'ISO 9001:2015 - Cláusula 7.2 Competencia del personal' },
+  { id: '7.5', nombre: 'ISO 9001:2015 - Cláusula 7.5 Información documentada' },
+  { id: '8.2', nombre: 'ISO 9001:2015 - Cláusula 8.2 Requisitos para los productos y servicios' },
+  { id: '8.5.2', nombre: 'ISO 9001:2015 - Cláusula 8.5.2 Identificación y trazabilidad' },
+  { id: '9.2', nombre: 'ISO 9001:2015 - Cláusula 9.2 Auditoría interna' },
+  { id: 'custom', nombre: ' Otra cláusula (Personalizada)' },
+];
+
 export default function App() {
   const [file, setFile] = useState(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
-  const [requisito, setRequisito] = useState('ISO 9001:2015 - Cláusula 7.2 Competencia');
+  const [requisito, setRequisito] = useState(CLAUSULAS_ISO9001[0].nombre);
+  const [esPersonalizada, setEsPersonalizada] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
@@ -168,13 +179,36 @@ export default function App() {
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                   Requisito / Norma a Auditar
                 </label>
-                <input
-                  type="text"
-                  value={requisito}
-                  onChange={(e) => setRequisito(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
-                  required
-                />
+                <select
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'custom') {
+                      setEsPersonalizada(true);
+                      setRequisito('');
+                    } else {
+                      setEsPersonalizada(false);
+                      setRequisito(val);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white mb-2"
+                >
+                  {CLAUSULAS_ISO9001.map((item) => (
+                    <option key={item.id} value={item.id === 'custom' ? 'custom' : item.nombre}>
+                      {item.nombre}
+                    </option>
+                  ))}
+                </select>
+
+                {esPersonalizada && (
+                  <input
+                    type="text"
+                    placeholder="Escribe la norma o cláusula personalizada..."
+                    value={requisito}
+                    onChange={(e) => setRequisito(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                    required
+                  />
+                )}
               </div>
 
               <div>
