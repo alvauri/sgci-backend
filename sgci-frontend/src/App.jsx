@@ -25,12 +25,26 @@ const CLAUSULAS_ISO9001 = [
 export default function App() {
   const [file, setFile] = useState(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
-  const [requisito, setRequisito] = useState(CLAUSULAS_ISO9001[0].nombre);
-  const [esPersonalizada, setEsPersonalizada] = useState(false);
+  const [requisitosSeleccionados, setRequisitosSeleccionados] = useState([CLAUSULAS_ISO9001[0].nombre]);
+  const [requisitoPersonalizado, setRevisitoPersonalizado] = useState('');
+  const [mostrarPersonalizado, setMostrarPersonalizado] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
   
+  //Para marcar y desmarcar
+  const toggleClausula = (nombreClausula) => {
+  if (requisitosSeleccionados.includes(nombreClausula)) {
+    // Si ya está marcada, la quitamos (a menos que sea la única)
+    if (requisitosSeleccionados.length > 1) {
+      setRequisitosSeleccionados(requisitosSeleccionados.filter(item => item !== nombreClausula));
+    }
+  } else {
+    // Si no está marcada, la agregamos
+    setRequisitosSeleccionados([...requisitosSeleccionados, nombreClausula]);
+  }
+};
+
   // Historial
   const [historial, setHistorial] = useState([]);
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -77,7 +91,13 @@ export default function App() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('requisito_norma', requisito);
+    const listaFinal = [...requisitosSeleccionados];
+    if (mostrarPersonalizado && requisitoPersonalizado.trim()) {
+      listaFinal.push(`Personalizado: ${requisitoPersonalizado.trim()}`);
+    }
+    const requisitoString = listaFinal.join(' | ');
+
+    formData.append('requisito_norma', requisitoString);
 
     try {
       const res = await fetch(`${API_BASE}/audit-document`, {
@@ -176,39 +196,56 @@ export default function App() {
 
             <form onSubmit={handleAudit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Requisito / Norma a Auditar
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  Requisitos / Cláusulas a Auditar (Selección Múltiple)
                 </label>
-                <select
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'custom') {
-                      setEsPersonalizada(true);
-                      setRequisito('');
-                    } else {
-                      setEsPersonalizada(false);
-                      setRequisito(val);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white mb-2"
-                >
-                  {CLAUSULAS_ISO9001.map((item) => (
-                    <option key={item.id} value={item.id === 'custom' ? 'custom' : item.nombre}>
-                      {item.nombre}
-                    </option>
-                  ))}
-                </select>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  {CLAUSULAS_ISO9001.filter(item => item.id !== 'custom').map((item) => {
+                    const isChecked = requisitosSeleccionados.includes(item.nombre);
+                    return (
+                      <label 
+                        key={item.id} 
+                        className={`flex items-start gap-2.5 p-2 rounded-md cursor-pointer transition border text-xs ${
+                          isChecked 
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-medium' 
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleClausula(item.nombre)}
+                          className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>{item.nombre}</span>
+                      </label>
+                    );
+                  })}
+                </div>
 
-                {esPersonalizada && (
-                  <input
-                    type="text"
-                    placeholder="Escribe la norma o cláusula personalizada..."
-                    value={requisito}
-                    onChange={(e) => setRequisito(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
-                    required
-                  />
-                )}
+                {/* Opción Personalizada */}
+                <div className="mt-3">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mostrarPersonalizado}
+                      onChange={(e) => setMostrarPersonalizado(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Agregar otra cláusula personalizada</span>
+                  </label>
+
+                  {mostrarPersonalizado && (
+                    <input
+                      type="text"
+                      placeholder="Escribe la cláusula o requisito adicional..."
+                      value={requisitoPersonalizado}
+                      onChange={(e) => setRevisitoPersonalizado(e.target.value)}
+                      className="w-full mt-2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                    />
+                  )}
+                </div>
               </div>
 
               <div>
@@ -344,4 +381,6 @@ export default function App() {
       </main>
     </div>
   );
+
+  
 }

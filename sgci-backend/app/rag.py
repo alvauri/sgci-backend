@@ -33,9 +33,21 @@ def evaluate_compliance(*args, **kwargs) -> dict:
 
     model = genai.GenerativeModel("gemini-3.6-flash")
 
-    prompt = f"""
-    Sos un Auditor Líder de Certificación de Normas ISO (especialmente ISO 9001).
-    Tu tarea es evaluar la documentación entregada por la empresa frente al Requisito de la Norma.
+    prompt = f"""Eres un auditor líder experto y certificado en la norma ISO 9001:2015.
+                Tu objetivo es auditar el documento PDF adjunto con respecto a los siguientes requisitos/cláusulas seleccionadas:
+                "{requisito_norma}"
+                INSTRUCCIONES DE EVALUACIÓN:
+                1. Si se enviaron múltiples cláusulas (separadas por '|'), debes evaluar el cumplimiento del documento para CADA UNA de las cláusulas listadas.
+                2. Determina el estado global de cumplimiento:
+                - "Cumple": El documento satisface plenamente todos los requisitos auditados.
+                - "Cumplimiento Parcial": Satisface de forma incompleta o cumple algunas cláusulas pero omite otras.
+                - "No Cumple": No satisface los requisitos o carece por completo de la evidencia necesaria.
+                3. En la "justificacion", desglosa brevemente el análisis puntual para cada cláusula evaluada.
+                4. En "evidencias", extrae citas textuales o hallazgos concretos del documento que sustenten el dictamen.
+
+                Responde ÚNICAMENTE en el formato JSON estructurado requerido.
+
+    
 
     REQUISITO DE LA NORMA:
     "{requisito_norma}"
