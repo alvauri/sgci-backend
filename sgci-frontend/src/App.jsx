@@ -7,97 +7,110 @@ import {
   RefreshCw,
   FileText,
   Eye,
-  Download
+  Printer,
+  Search,
+  Filter
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
-// Agrego clausulas
 const CLAUSULAS_ISO9001 = [
   { id: '7.2', nombre: 'ISO 9001:2015 - Cláusula 7.2 Competencia del personal' },
   { id: '7.5', nombre: 'ISO 9001:2015 - Cláusula 7.5 Información documentada' },
   { id: '8.2', nombre: 'ISO 9001:2015 - Cláusula 8.2 Requisitos para los productos y servicios' },
   { id: '8.5.2', nombre: 'ISO 9001:2015 - Cláusula 8.5.2 Identificación y trazabilidad' },
   { id: '9.2', nombre: 'ISO 9001:2015 - Cláusula 9.2 Auditoría interna' },
-  { id: 'custom', nombre: ' Otra cláusula (Personalizada)' },
+  { id: 'custom', nombre: 'Otra cláusula (Personalizada)' },
 ];
 
 export default function App() {
+  // --- Estados de Formulario y Visor PDF ---
   const [file, setFile] = useState(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [requisitosSeleccionados, setRequisitosSeleccionados] = useState([CLAUSULAS_ISO9001[0].nombre]);
-  const [requisitoPersonalizado, setRevisitoPersonalizado] = useState('');
+  const [requisitoPersonalizado, setRequisitoPersonalizado] = useState('');
   const [mostrarPersonalizado, setMostrarPersonalizado] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
   const [resultado, setResultado] = useState(null);
-  const [error, setError] = useState('');
-  
-  //Para marcar y desmarcar
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // --- Estados para Historial y Filtros Dinámicos ---
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('todos');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  /**
+   * Conmuta la selección de cláusulas en el listado multi-requisito.
+   */
   const toggleClausula = (nombreClausula) => {
-  if (requisitosSeleccionados.includes(nombreClausula)) {
-    // Si ya está marcada, la quitamos (a menos que sea la única)
-    if (requisitosSeleccionados.length > 1) {
-      setRequisitosSeleccionados(requisitosSeleccionados.filter(item => item !== nombreClausula));
+    if (requisitosSeleccionados.includes(nombreClausula)) {
+      if (requisitosSeleccionados.length > 1) {
+        setRequisitosSeleccionados(requisitosSeleccionados.filter(item => item !== nombreClausula));
+      }
+    } else {
+      setRequisitosSeleccionados([...requisitosSeleccionados, nombreClausula]);
     }
-  } else {
-    // Si no está marcada, la agregamos
-    setRequisitosSeleccionados([...requisitosSeleccionados, nombreClausula]);
-  }
-};
+  };
 
-  // Historial
-  const [historial, setHistorial] = useState([]);
-  const [filtroEstado, setFiltroEstado] = useState('');
+  /**
+   * Consulta el historial de auditorías almacenado en PostgreSQL mediante el backend.
+   */
+  const fetchAuditLogs = async (statusFilter = selectedStatusFilter) => {
+    setIsLoadingLogs(true);
+    try {
+      const queryParam = statusFilter !== 'todos' ? `?estado=${encodeURIComponent(statusFilter)}` : '';
+      const response = await fetch(`${API_BASE}/audit-logs${queryParam}`);
 
-  // Generar URL de previsualización del PDF al seleccionar archivo
+      if (!response.ok) {
+        throw new Error(`Error HTTP en servidor: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAuditLogs(data.logs || data);
+    } catch (error) {
+      console.error('No se pudo recuperar el historial de auditorías:', error);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  // Carga inicial de historial
+  useEffect(() => {
+    fetchAuditLogs();
+  }, []);
+
+  // Control de ciclo de vida del Blob URL para previsualizar PDF
   useEffect(() => {
     if (file) {
       const url = URL.createObjectURL(file);
       setPdfPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
-    } else {
-      setPdfPreviewUrl(null);
     }
+    setPdfPreviewUrl(null);
   }, [file]);
 
-  const cargarHistorial = async () => {
-    try {
-      const url = filtroEstado 
-        ? `${API_BASE}/audit-logs?estado=${filtroEstado}`
-        : `${API_BASE}/audit-logs`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setHistorial(data);
-      }
-    } catch (err) {
-      console.error('Error cargando historial:', err);
-    }
-  };
-
-  useEffect(() => {
-    cargarHistorial();
-  }, [filtroEstado]);
-
+  /**
+   * Ejecuta el proceso de auditoría llamando a la API multimodal de Gemini.
+   */
   const handleAudit = async (e) => {
     e.preventDefault();
     if (!file) {
-      setError('Por favor selecciona un archivo PDF');
+      setErrorMessage('Por favor selecciona un archivo PDF');
       return;
     }
-    setError('');
-    setLoading(true);
+    setErrorMessage('');
+    setIsAuditing(true);
     setResultado(null);
 
     const formData = new FormData();
     formData.append('file', file);
+
     const listaFinal = [...requisitosSeleccionados];
     if (mostrarPersonalizado && requisitoPersonalizado.trim()) {
       listaFinal.push(`Personalizado: ${requisitoPersonalizado.trim()}`);
     }
-    const requisitoString = listaFinal.join(' | ');
-
-    formData.append('requisito_norma', requisitoString);
+    formData.append('requisito_norma', listaFinal.join(' | '));
 
     try {
       const res = await fetch(`${API_BASE}/audit-document`, {
@@ -112,32 +125,46 @@ export default function App() {
 
       const data = await res.json();
       setResultado(data);
-      cargarHistorial();
+      fetchAuditLogs();
     } catch (err) {
-      setError(err.message || 'Ocurrió un error al procesar la auditoría');
+      setErrorMessage(err.message || 'Ocurrió un error al procesar la auditoría');
     } finally {
-      setLoading(false);
+      setIsAuditing(false);
     }
   };
 
-  const handleExportPDF = () => {
-    window.print(); // Dispara el diálogo nativo de impresión / Guardar como PDF
+  /**
+   * Dispara el diálogo nativo para guardar como PDF o imprimir el dictamen actual.
+   */
+  const handleExportReport = () => {
+    window.print();
   };
 
+  /**
+   * Retorna estilos de Tailwind CSS según el estado de cumplimiento.
+   */
   const getBadgeClass = (estado) => {
     switch (estado?.toLowerCase()) {
       case 'cumple':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
       case 'no cumple':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return 'bg-rose-100 text-rose-800 border-rose-300';
       default:
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return 'bg-amber-100 text-amber-800 border-amber-300';
     }
   };
 
+  // Filtrado reactivo en memoria por término de búsqueda (nombre de archivo o norma)
+  const filteredLogs = auditLogs.filter((item) => {
+    const term = searchTerm.toLowerCase();
+    const fileName = item.nombre_archivo || item.filename || '';
+    const normRequirement = item.requisito_norma || item.requisito_evaluado || '';
+    return fileName.toLowerCase().includes(term) || normRequirement.toLowerCase().includes(term);
+  });
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex flex-col">
-      {/* Header */}
+      {/* Encabezado Principal */}
       <header className="bg-slate-900 text-white py-4 shadow-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -150,14 +177,14 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container Split-Screen */}
+      {/* Contenedor Principal Split-Screen */}
       <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 w-full">
         
-        {/* Columna Izquierda: Visor del PDF (6 Columnas) */}
+        {/* Panel Izquierdo: Visor PDF */}
         <section className="lg:col-span-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[780px]">
           <div className="flex items-center justify-between mb-3 border-b pb-2">
             <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <Eye className="h-4 w-4 text-indigo-600" /> Visor de Documento Subido
+              <Eye className="h-4 w-4 text-indigo-600" /> Visor de Documento Auditable
             </h2>
             {file && (
               <span className="text-xs font-medium text-slate-500 truncate max-w-[200px]">
@@ -179,16 +206,16 @@ export default function App() {
               <FileText className="h-14 w-14 text-slate-300 mb-3" />
               <p className="text-sm font-medium text-slate-600">No hay documento seleccionado</p>
               <p className="text-xs text-slate-400 mt-1">
-                Selecciona un archivo PDF en el panel derecho para visualizarlo aquí en tiempo real.
+                Selecciona un archivo PDF en el panel derecho para visualizarlo en tiempo real.
               </p>
             </div>
           )}
         </section>
 
-        {/* Columna Derecha: Formulario, Dictamen y Historial (6 Columnas) */}
+        {/* Panel Derecho: Formulario, Dictamen e Historial */}
         <section className="lg:col-span-6 space-y-6 h-[780px] overflow-y-auto pr-1">
           
-          {/* Formulario */}
+          {/* Formulario de Evaluación */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
             <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <UploadCloud className="h-4 w-4 text-indigo-600" /> Nueva Evaluación de Cumplimiento
@@ -224,7 +251,6 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Opción Personalizada */}
                 <div className="mt-3">
                   <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
                     <input
@@ -241,7 +267,7 @@ export default function App() {
                       type="text"
                       placeholder="Escribe la cláusula o requisito adicional..."
                       value={requisitoPersonalizado}
-                      onChange={(e) => setRevisitoPersonalizado(e.target.value)}
+                      onChange={(e) => setRequisitoPersonalizado(e.target.value)}
                       className="w-full mt-2 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                     />
                   )}
@@ -260,19 +286,19 @@ export default function App() {
                 />
               </div>
 
-              {error && (
-                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-center gap-2">
+              {errorMessage && (
+                <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded-lg flex items-center gap-2 border border-rose-200">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  <span>{error}</span>
+                  <span>{errorMessage}</span>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={isAuditing}
                 className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow transition duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 text-sm"
               >
-                {loading ? (
+                {isAuditing ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
                     <span>Analizando con RAG / Gemini...</span>
@@ -284,7 +310,7 @@ export default function App() {
             </form>
           </div>
 
-          {/* Resultado del Dictamen */}
+          {/* Resultado del Dictamen Activo */}
           {resultado && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
@@ -292,10 +318,10 @@ export default function App() {
                 
                 <div className="flex items-center gap-2">
                   <button 
-                    onClick={handleExportPDF} 
-                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition border border-slate-200"
+                    onClick={handleExportReport} 
+                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <Printer className="h-3.5 w-3.5" />
                     Exportar PDF
                   </button>
 
@@ -325,55 +351,84 @@ export default function App() {
             </div>
           )}
 
-          {/* Historial */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center justify-between mb-3">
+          {/* Panel de Historial de Auditorías con Filtros Dinámicos */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
               <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <History className="h-4 w-4 text-indigo-600" /> Historial
+                <History className="h-4 w-4 text-indigo-600" /> Historial de Auditorías
               </h2>
               <button 
-                onClick={cargarHistorial} 
-                className="p-1 hover:bg-slate-100 rounded-full transition"
-                title="Actualizar"
+                onClick={() => fetchAuditLogs()} 
+                disabled={isLoadingLogs}
+                className="p-1 hover:bg-slate-100 rounded-full transition disabled:opacity-50"
+                title="Actualizar registros"
               >
-                <RefreshCw className="h-4 w-4 text-slate-500" />
+                <RefreshCw className={`h-4 w-4 text-slate-500 ${isLoadingLogs ? 'animate-spin' : ''}`} />
               </button>
             </div>
 
-            {/* Filtros */}
-            <div className="mb-3">
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                className="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-              >
-                <option value="">Todos los estados</option>
-                <option value="Cumple">Cumple</option>
-                <option value="No Cumple">No Cumple</option>
-                <option value="Cumplimiento Parcial">Cumplimiento Parcial</option>
-              </select>
+            {/* Filtros: Búsqueda por Texto y Estado */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por documento o norma..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="relative">
+                <Filter className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                <select
+                  value={selectedStatusFilter}
+                  onChange={(e) => {
+                    const newFilter = e.target.value;
+                    setSelectedStatusFilter(newFilter);
+                    fetchAuditLogs(newFilter);
+                  }}
+                  className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                >
+                  <option value="todos">Todos los Estados</option>
+                  <option value="Cumple">Cumple</option>
+                  <option value="Cumplimiento Parcial">Cumplimiento Parcial</option>
+                  <option value="No Cumple">No Cumple</option>
+                </select>
+              </div>
             </div>
 
-            {/* Lista de Registros */}
-            <div className="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
-              {historial.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-4">No hay registros guardados.</p>
-              ) : (
-                historial.map((item) => (
-                  <div key={item.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-800 truncate max-w-[180px]">
-                        {item.filename}
-                      </span>
-                      <span className={`px-2 py-0.5 text-[10px] font-semibold rounded border ${getBadgeClass(item.resultado_auditoria?.estado)}`}>
-                        {item.resultado_auditoria?.estado || 'Pendiente'}
-                      </span>
+            {/* Registros Filtrados */}
+            {isLoadingLogs ? (
+              <p className="text-xs text-slate-400 text-center py-6">Cargando historial desde la base de datos...</p>
+            ) : filteredLogs.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">No se encontraron registros de auditoría.</p>
+            ) : (
+              <div className="space-y-2.5 max-h-[250px] overflow-y-auto pr-1 divide-y divide-slate-100">
+                {filteredLogs.map((item) => {
+                  const auditState = item.dictamen?.estado || item.resultado_auditoria?.estado || 'Desconocido';
+                  const fileName = item.nombre_archivo || item.filename || 'Documento sin nombre';
+                  const requirement = item.requisito_norma || item.requisito_evaluado || 'Requisito general';
+
+                  return (
+                    <div key={item.id} className="pt-2.5 first:pt-0 flex flex-col space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-slate-800 truncate max-w-[200px]" title={fileName}>
+                          {fileName}
+                        </span>
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded border ${getBadgeClass(auditState)}`}>
+                          {auditState}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate" title={requirement}>
+                        {requirement}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-500 truncate">{item.requisito_evaluado}</p>
-                  </div>
-                ))
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
         </section>
@@ -381,6 +436,4 @@ export default function App() {
       </main>
     </div>
   );
-
-  
 }
